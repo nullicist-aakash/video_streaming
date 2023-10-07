@@ -1,7 +1,7 @@
 {
-  "name": "relay",
+  "name": "peer",
   "version": "1.0.0",
-  "description": "Beecholiya for establishment of connection between two peers",
+  "description": "Clients which will talk to each other after establishment of connection.",
   "main": "index.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
