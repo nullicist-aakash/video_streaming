@@ -1,0 +1,11 @@
+{
+  "name": "peer",
+  "version": "1.0.0",
+  "description": "Clients which will talk to each other after establishment of connection.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
