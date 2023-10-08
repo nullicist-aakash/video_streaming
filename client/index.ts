@@ -24,13 +24,13 @@ const get_peer_address = (port: number, relay_name: string, relay_port: number) 
 const port = parseInt(process.argv[2]);
 const relay_name = process.argv[3];
 const relay_port = parseInt(process.argv[4]);
-const peer_address = get_peer_address(port, relay_name, relay_port);
-
-const udp = get_udp_socket('0.0.0.0', port);
-udp.onMessage((IP, PORT, message) => {
-    console.log(`Message from ${IP}:${PORT}: ${message}`);
+get_peer_address(port, relay_name, relay_port).then((peer_address) => {
+    const udp = get_udp_socket('0.0.0.0', port);
+    udp.onMessage((IP, PORT, message) => {
+        console.log(`Message from ${IP}:${PORT}: ${message}`);
+    });
+    
+    for (let i = 0; i < 2; i++) {
+        udp.send(peer_address['IP'], peer_address['PORT'], 'Hello PEER!');
+    }
 });
-
-for (let i = 0; i < 2; i++) {
-    udp.send(peer_address['IP'], peer_address['PORT'], 'Hello PEER!');
-}
