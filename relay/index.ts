@@ -24,7 +24,7 @@ udp.onMessage((IP ,PORT, message) => {
     else
         return;
 
-    console.log(`Received message from ${database[-1]} with content: ${message}`);
+    console.log(`Received message from ${database[database.length - 1]} with content: ${message}`);
     if (database.length != 2)
         return;
 
@@ -32,12 +32,14 @@ udp.onMessage((IP ,PORT, message) => {
         const send_IP = database[i].split(':')[0];
         const send_PORT = parseInt(database[i].split(':')[1]);
 
-        for (let j = 0; j < 5; ++j)
+        for (let j = 0; j < 5; ++j) {
+            console.log(`Sending message to ${send_IP}:${send_PORT} with content: ${database[1 - i]}`)
             udp.send(send_IP, send_PORT, `${database[1 - i]}`);
+        }
     }
     
     // clean database
     database.length = 0;
     database = [];
-    udp.closeSocket();
+    setTimeout(() => udp.closeSocket(), 1000);
 });

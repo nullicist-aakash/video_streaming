@@ -16,7 +16,8 @@ const get_peer_address = (port: number, relay_name: string, relay_port: number) 
         udp.closeSocket();
         const peer_ip = message.split(':')[0];
         const peer_port = parseInt(message.split(':')[1]);
-        setTimeout(() => resolve({IP: peer_ip, PORT: peer_port}), 1000);
+        console.log(`Peer IP: ${peer_ip}, Peer Port: ${peer_port}`);
+        setTimeout(() => resolve({'IP': peer_ip, 'PORT': peer_port}), 1000);
     }));
 };
 
@@ -24,4 +25,12 @@ const port = parseInt(process.argv[2]);
 const relay_name = process.argv[3];
 const relay_port = parseInt(process.argv[4]);
 const peer_address = get_peer_address(port, relay_name, relay_port);
-console.log(peer_address);
+
+const udp = get_udp_socket('0.0.0.0', port);
+udp.onMessage((IP, PORT, message) => {
+    console.log(`Message from ${IP}:${PORT}: ${message}`);
+});
+
+for (let i = 0; i < 2; i++) {
+    udp.send(peer_address['IP'], peer_address['PORT'], 'Hello PEER!');
+}
