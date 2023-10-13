@@ -7,7 +7,6 @@ const port = parseInt(process.argv[2]);
 console.log(`Will open passive TCP connection on port ${port} for all interfaces.`);
 
 let database = {};
-let active_connections = {};
 
 const tcp = get_tcp_socket('0.0.0.0', port);
 
@@ -24,13 +23,9 @@ tcp.onMessage((IP, PORT, data) => {
     if (!database[data])
         database[data] = [];
 
-    if (active_connections[`${IP}:${PORT}`])
-        return;
-
     console.log(`Received data '${data}' from ${IP}:${PORT}.`);
     database[data].push([IP, PORT]);
-    active_connections[`${IP}:${PORT}`] = true;
-
+    
     if (database[data].length == 2) {
         // Send peer details to both peers
         for (let i = 0; i < 2; ++i) {
@@ -42,15 +37,11 @@ tcp.onMessage((IP, PORT, data) => {
 
         // Clean the entry for current device for future use
         delete database[data];
-        delete active_connections[`${IP}:${PORT}`];
     }
 });
 
 tcp.onConnectionClose((IP, PORT) => {
     console.log(`Connection closed actively from ${IP}:${PORT}. I never close connections actively.`);
-    const identity = `${IP}:${PORT}`;
-    if (identity in active_connections)
-        delete active_connections[identity];
 
     for (let data in database) {
         let index = database[data].findIndex(value => value[0] == IP && value[1] == PORT);
@@ -65,5 +56,4 @@ tcp.onConnectionClose((IP, PORT) => {
     }
 
     console.log(`Current database status: ${JSON.stringify(database)}`);
-    console.log(`Current active connections status: ${JSON.stringify(active_connections)}`);
 });
