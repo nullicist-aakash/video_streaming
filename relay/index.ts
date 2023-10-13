@@ -1,45 +1,69 @@
 'use strict';
 import {
-    get_udp_socket
+    get_tcp_socket
 } from './sockets';
 
-function searchStringInArray(str: string, strArray: string[]) {
-    for (var j = 0; j < strArray.length; j++) 
-        if (strArray[j].match(str))
-            return true;
-    return false;
-}
-
 const port = parseInt(process.argv[2]);
-console.log(`Will open relay on UDP port: ${port}`);
-const udp = get_udp_socket('0.0.0.0', port);
+console.log(`Will open passive TCP connection on port ${port} for all interfaces.`);
 
-let database = [];
+let database = {};
+let active_connections = {};
 
-udp.onMessage((IP ,PORT, message) => {
-    const to_add = `${IP}:${PORT}`;
+const tcp = get_tcp_socket('0.0.0.0', port);
 
-    if (!searchStringInArray(to_add, database))
-        database.push(to_add);
-    else
+tcp.onNewConnection((IP, PORT) => {
+    console.log(`New TCP connection from ${IP}:${PORT}.`);
+});
+
+tcp.onSocketError((err) => {
+    console.log(`Error while opening TCP socket: ${err}`);
+});
+
+tcp.onMessage((IP, PORT, data) => {
+    data = data.replace('\n', '');
+    if (!database[data])
+        database[data] = [];
+
+    if (active_connections[`${IP}:${PORT}`])
         return;
 
-    console.log(`Received message from ${database[database.length - 1]} with content: ${message}`);
-    if (database.length != 2)
-        return;
+    console.log(`Received data '${data}' from ${IP}:${PORT}.`);
+    database[data].push([IP, PORT]);
+    active_connections[`${IP}:${PORT}`] = true;
 
-    for (let i = 0; i < database.length; i++) {
-        const send_IP = database[i].split(':')[0];
-        const send_PORT = parseInt(database[i].split(':')[1]);
+    if (database[data].length == 2) {
+        // Send peer details to both peers
+        for (let i = 0; i < 2; ++i) {
+            let [self_ip, self_port] = database[data][i];
+            let [other_ip, other_port] = database[data][1 - i];
 
-        for (let j = 0; j < 5; ++j) {
-            console.log(`Sending message to ${send_IP}:${send_PORT} with content: ${database[1 - i]}`)
-            udp.send(send_IP, send_PORT, `${database[1 - i]}`);
+            tcp.send(self_ip, self_port, `${other_ip}:${other_port}`);
         }
+
+        // Clean the entry for current device for future use
+        delete database[data];
+        delete active_connections[`${IP}:${PORT}`];
     }
-    
-    // clean database
-    database.length = 0;
-    database = [];
-    setTimeout(() => udp.closeSocket(), 1000);
+});
+
+tcp.onConnectionClose((IP, PORT) => {
+    console.log(`Connection closed actively from ${IP}:${PORT}. I never close connections actively.`);
+    const identity = `${IP}:${PORT}`;
+    if (identity in active_connections)
+        delete active_connections[identity];
+
+    for (let data in database) {
+        let index = database[data].findIndex(value => value[0] == IP && value[1] == PORT);
+
+        if (index == -1) continue;
+
+        database[data].splice(index, 1);
+
+        if (database[data].length == 0)
+            delete database[data];
+        break;
+    }
+
+    console.log(`Current database status: ${JSON.stringify(database)}`);
+    console.log(`Current active connections status: ${JSON.stringify(active_connections)}`);
 });
