@@ -16,12 +16,24 @@
 #include <map>
 #include <vector>
 #include <thread>
-#include <mutex>
 #include <barrier>
+#include <mutex>
 #include <memory>
+#include <cassert>
 
 #define MAX_PENDING 5
 #define BUFFSIZE 32
+
+const std::string get_printable_IP(const sockaddr_in& addr)
+{
+    // Using 'https://www.qnx.com/developers/docs/6.5.0SP1.update/com.qnx.doc.neutrino_lib_ref/i/inet_ntop.html'
+    char printable_address[INET_ADDRSTRLEN];
+    
+	if (inet_ntop(addr.sin_family, &addr.sin_addr, printable_address, sizeof(printable_address)) != nullptr)
+        return "<" + std::string(printable_address) + ">:<" + std::to_string(ntohs(addr.sin_port)) + ">";
+    
+	return "<ERROR>:<" + std::to_string(ntohs(addr.sin_port)) + ">";
+}
 
 int passive_tcp_socket(int self_port) 
 {
@@ -60,11 +72,12 @@ class ConnectionManager
 	std::map<int, sockaddr_in> connections;  // fd -> sockaddr_in
 	std::map<int, std::string> fd_to_identifier;
 	std::map<std::string, std::vector<int>> identifier_to_fds;
-	std::map<std::string, std::unique_ptr<std::barrier<std::mutex>>> identifier_to_barrier;
+	std::map<std::string, std::barrier<>*> identifier_to_barrier;
 
 	const static int max_connections = 2;
+	std::mutex _mtx;
 public:
-	bool is_connection_full(std::string& identifier) const
+	bool is_connection_full(std::string& identifier)
 	{
 		if (identifier_to_fds.find(identifier) == identifier_to_fds.end())
 			return false;
@@ -74,34 +87,36 @@ public:
 
 	bool register_connection(int fd, sockaddr_in addr, std::string& identifier)
 	{
+		std::lock_guard<std::mutex> lock(_mtx);
 		if (is_connection_full(identifier))
 			return false;
 
-		if (connections.find(fd) != connections.end())
-			return false;
+		assert(connections.find(fd) == connections.end());
 
 		connections[fd] = addr;
 		identifier_to_fds[identifier].push_back(fd);
 		fd_to_identifier[fd] = identifier;
-		identifier_to_barrier[identifier] = std::make_unique<std::barrier<std::mutex>>(new std::barrier<std::mutex>(max_connections));
+		identifier_to_barrier[identifier] = new std::barrier(max_connections);
 		return true;
 	}
 
-	std::vector<sockaddr_in> get_peers(int fd)
+	std::vector<std::pair<int, sockaddr_in>> get_peers(int fd)
 	{
+		std::lock_guard<std::mutex> lock(_mtx);
 		if (connections.find(fd) == connections.end())
 			return {};
 
 		const auto& identifier = fd_to_identifier.at(fd);
 		std::vector<int> fds = identifier_to_fds.at(identifier);
-		std::vector<sockaddr_in> peers;
+		std::vector<std::pair<int, sockaddr_in>> peers;
 		for (int fd : fds)
-			peers.push_back(connections.at(fd));
+			peers.push_back({fd, connections.at(fd)});
 		return peers;
 	}
 
 	bool remove_fd(int fd)
 	{
+		std::lock_guard<std::mutex> lock(_mtx);
 		if (connections.find(fd) == connections.end())
 			return false;
 		
@@ -120,6 +135,7 @@ public:
 		if (vec.size() == 0)
 		{
 			identifier_to_fds.erase(identifier);
+			delete identifier_to_barrier[identifier];
 			identifier_to_barrier.erase(identifier);
 		}
 
@@ -130,6 +146,7 @@ public:
 
 	bool remove_by_identifier(const std::string& identifier)
 	{
+		std::lock_guard<std::mutex> lock(_mtx);
 		if (identifier_to_fds.find(identifier) == identifier_to_fds.end())
 			return false;
 
@@ -139,32 +156,80 @@ public:
 			connections.erase(fd);
 			fd_to_identifier.erase(fd);
 		}
-		
+
 		identifier_to_fds.erase(identifier);
+		delete identifier_to_barrier[identifier];
 		identifier_to_barrier.erase(identifier);
 		return true;
 	}
 
 	void wait_on_barrier(int fd)
 	{
-		if (fd_to_identifier.find(fd) == fd_to_identifier.end())
-			return;
+		{
+			std::lock_guard<std::mutex> lock(_mtx);
+			if (fd_to_identifier.find(fd) == fd_to_identifier.end())
+				return;
+		}
 
 		const auto& identifier = fd_to_identifier.at(fd);
+		
+		std::clog << fd << ": Calling arrive and wait on thread with ID: " << std::this_thread::get_id() << " with identifier: " << identifier <<
+			" and address: " << identifier_to_barrier.at(identifier) << std::endl; 
 		identifier_to_barrier.at(identifier)->arrive_and_wait();
+		std::clog << fd << ": Finished arrive and wait on thread with ID: " << std::this_thread::get_id() << " with identifier: " << identifier <<
+			" and address: " << identifier_to_barrier.at(identifier) << std::endl;
 	}
 };
 
-void handle_connection(int clifd, sockaddr_in& cliaddr, ConnectionManager& cm)
+void handle_connection(int clifd, sockaddr_in cliaddr, ConnectionManager& cm)
 {
+	std::clog << "Spawned thread with ID: " << std::this_thread::get_id() << std::endl; 
+	char BUFF[BUFFSIZE];
+	int n;
+	if ((n = read(clifd, BUFF, BUFFSIZE)) < 0) 
+	{
+		std::clog << get_printable_IP(cliaddr) << ": Client closed the connection without sending identifier!" << std::endl;
+		perror("read");
+		close(clifd);
+		return;
+	}
 
+	std::string identifier(BUFF, n);
+	std::clog << get_printable_IP(cliaddr) << ": Client sent the identifier: `" << identifier << "`" << std::endl;
+
+	std::clog << 234 << std::endl;
+	if (!cm.register_connection(clifd, cliaddr, identifier))
+	{
+		std::clog << get_printable_IP(cliaddr) << ": 2 clients are already waiting on this identifier. Closing the connection." << std::endl;
+		close(clifd);
+		return;
+	}
+
+	cm.wait_on_barrier(clifd);
+	auto peers = cm.get_peers(clifd);
+	std::clog << get_printable_IP(cliaddr) << ": Sending PEER information to the client." << std::endl;
+
+	for (auto &[fd, addr]: peers)
+	{
+		if (fd == clifd)
+			continue;
+		
+		if ((n = write(clifd, &addr, sizeof(addr))) < 0)
+		{
+			std::clog << get_printable_IP(cliaddr) << ": Client closed the connection without receiving peer!" << std::endl;
+			perror("write");
+		}
+
+		break;
+	}
+	
+	cm.wait_on_barrier(clifd);
+	std::clog << get_printable_IP(cliaddr) << ": Closing the connection." << std::endl;
+	close(clifd);
 }
 
 int main(int argc, char** argv)
 {
-	std::map<int, int> mp;
-	std::cout << mp.at(1) << std::endl;
-	return 0;
 	if (argc != 2) 
 	{
 		std::clog << "Usage: " << argv[0] << " <server_port>" << std::endl;
@@ -192,7 +257,9 @@ int main(int argc, char** argv)
 			exit(EXIT_FAILURE);
 		}
 
-		std::clog << "Accepted a new connection from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << std::endl;
-		handle_connection(client_fd, cliaddr, cm);
-	}
+		std::thread([client_fd, cliaddr, &cm]() {
+			std::clog << "Accepted a new connection from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << std::endl;
+			handle_connection(client_fd, cliaddr, cm);
+		}).detach();
+	};
 }
