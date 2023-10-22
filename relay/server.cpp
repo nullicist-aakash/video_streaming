@@ -20,6 +20,7 @@
 #include <mutex>
 #include <memory>
 #include <cassert>
+#include <algorithm>
 
 #define MAX_PENDING 5
 #define BUFFSIZE 32
@@ -30,9 +31,9 @@ const std::string get_printable_IP(const sockaddr_in& addr)
     char printable_address[INET_ADDRSTRLEN];
     
 	if (inet_ntop(addr.sin_family, &addr.sin_addr, printable_address, sizeof(printable_address)) != nullptr)
-        return "<" + std::string(printable_address) + ">:<" + std::to_string(ntohs(addr.sin_port)) + ">";
+        return std::string(printable_address) + ":" + std::to_string(ntohs(addr.sin_port));
     
-	return "<ERROR>:<" + std::to_string(ntohs(addr.sin_port)) + ">";
+	return "ERROR:" + std::to_string(ntohs(addr.sin_port));
 }
 
 int passive_tcp_socket(int self_port) 
@@ -96,7 +97,9 @@ public:
 		connections[fd] = addr;
 		identifier_to_fds[identifier].push_back(fd);
 		fd_to_identifier[fd] = identifier;
-		identifier_to_barrier[identifier] = new std::barrier(max_connections);
+
+		if (identifier_to_barrier[identifier] == nullptr)
+			identifier_to_barrier[identifier] = new std::barrier(max_connections);
 		return true;
 	}
 
@@ -173,59 +176,66 @@ public:
 
 		const auto& identifier = fd_to_identifier.at(fd);
 		
-		std::clog << fd << ": Calling arrive and wait on thread with ID: " << std::this_thread::get_id() << " with identifier: " << identifier <<
-			" and address: " << identifier_to_barrier.at(identifier) << std::endl; 
 		identifier_to_barrier.at(identifier)->arrive_and_wait();
-		std::clog << fd << ": Finished arrive and wait on thread with ID: " << std::this_thread::get_id() << " with identifier: " << identifier <<
-			" and address: " << identifier_to_barrier.at(identifier) << std::endl;
 	}
 };
 
 void handle_connection(int clifd, sockaddr_in cliaddr, ConnectionManager& cm)
 {
-	std::clog << "Spawned thread with ID: " << std::this_thread::get_id() << std::endl; 
+	auto prefix = get_printable_IP(cliaddr) + ": ";
+	
 	char BUFF[BUFFSIZE];
-	int n;
-	if ((n = read(clifd, BUFF, BUFFSIZE)) < 0) 
+	int n = read(clifd, BUFF, BUFFSIZE);
+	if (n < 0) 
 	{
-		std::clog << get_printable_IP(cliaddr) << ": Client closed the connection without sending identifier!" << std::endl;
 		perror("read");
+		std::clog << prefix << "Connection terminated unexpectedly!" << std::endl;
+		close(clifd);
+		return;
+	}
+
+	if (n == 0)
+	{
+		std::clog << prefix << "Client closed the connection without sending identifier!" << std::endl;
 		close(clifd);
 		return;
 	}
 
 	std::string identifier(BUFF, n);
-	std::clog << get_printable_IP(cliaddr) << ": Client sent the identifier: `" << identifier << "`" << std::endl;
+	identifier.erase(std::remove_if(identifier.begin(), identifier.end(), ::isspace), identifier.end());
+	std::clog << prefix << "Client sent the identifier: `" << identifier << "`" << std::endl;
 
-	std::clog << 234 << std::endl;
 	if (!cm.register_connection(clifd, cliaddr, identifier))
 	{
-		std::clog << get_printable_IP(cliaddr) << ": 2 clients are already waiting on this identifier. Closing the connection." << std::endl;
+		std::clog << prefix << "2 clients are already waiting on this identifier. Closing the connection." << std::endl;
 		close(clifd);
 		return;
 	}
 
 	cm.wait_on_barrier(clifd);
 	auto peers = cm.get_peers(clifd);
-	std::clog << get_printable_IP(cliaddr) << ": Sending PEER information to the client." << std::endl;
 
 	for (auto &[fd, addr]: peers)
 	{
 		if (fd == clifd)
 			continue;
 		
+		std::clog << prefix << "Sending PEER information to the client - " << get_printable_IP(addr) << std::endl;
+		
 		if ((n = write(clifd, &addr, sizeof(addr))) < 0)
 		{
-			std::clog << get_printable_IP(cliaddr) << ": Client closed the connection without receiving peer!" << std::endl;
+			std::clog << prefix << "Client closed the connection without receiving peer!" << std::endl;
 			perror("write");
 		}
-
-		break;
 	}
 	
 	cm.wait_on_barrier(clifd);
-	std::clog << get_printable_IP(cliaddr) << ": Closing the connection." << std::endl;
+	
+	std::clog << prefix << "Closing the connection." << std::endl;
 	close(clifd);
+
+	if (cm.remove_by_identifier(identifier))
+		std::clog << prefix << "Cleared the identifier `" << identifier << "`" << std::endl;
 }
 
 int main(int argc, char** argv)
@@ -258,7 +268,7 @@ int main(int argc, char** argv)
 		}
 
 		std::thread([client_fd, cliaddr, &cm]() {
-			std::clog << "Accepted a new connection from " << inet_ntoa(cliaddr.sin_addr) << ":" << ntohs(cliaddr.sin_port) << std::endl;
+			std::clog << get_printable_IP(cliaddr) << ": Accepted a new connection." << std::endl;
 			handle_connection(client_fd, cliaddr, cm);
 		}).detach();
 	};
