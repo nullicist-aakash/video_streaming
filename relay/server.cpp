@@ -15,15 +15,34 @@
 #include <sstream>
 #include <map>
 #include <vector>
-#include <thread>
-#include <barrier>
-#include <mutex>
 #include <memory>
 #include <cassert>
 #include <algorithm>
 
 #define MAX_PENDING 5
 #define BUFFSIZE 32
+
+int comp(const sockaddr_in& a, const sockaddr_in& b)
+{
+	if (a.sin_addr.s_addr < b.sin_addr.s_addr)
+		return -1;
+	if (a.sin_addr.s_addr > b.sin_addr.s_addr)
+		return 1;
+	if (a.sin_port < b.sin_port)
+		return -1;
+	if (a.sin_port > b.sin_port)
+		return 1;
+	
+	return 0;
+}
+
+struct AddrComparator
+{
+   bool operator() (const sockaddr_in& lhs, const sockaddr_in& rhs) const
+   {
+       return comp(lhs, rhs);
+   }
+};
 
 const std::string get_printable_IP(const sockaddr_in& addr)
 {
@@ -36,206 +55,99 @@ const std::string get_printable_IP(const sockaddr_in& addr)
 	return "ERROR:" + std::to_string(ntohs(addr.sin_port));
 }
 
-int passive_tcp_socket(int self_port) 
-{
-	// Register TCP Socket
-	int listenfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (listenfd < 0) {
-		perror("socket error");
-		exit(-1);
-	}
-	
-	// Bind to local port
-	struct sockaddr_in selfAddr;
-	memset(&selfAddr, 0, sizeof(selfAddr));
-	selfAddr.sin_family = AF_INET;
-	selfAddr.sin_addr.s_addr = htonl(INADDR_ANY);  // Bind to any available local interface
-	selfAddr.sin_port = htons(self_port);  // Specify the port you want to bind to
-
-	if (bind(listenfd, (struct sockaddr*)&selfAddr, sizeof(selfAddr)) == -1) {
-		perror("bind_listen");
-		close(listenfd);
-		exit(EXIT_FAILURE);
-	}
-
-	// Listen for incoming connections
-	if (listen(listenfd, MAX_PENDING) == -1) {
-		perror("listen");
-		close(listenfd);
-		exit(EXIT_FAILURE);
-	}
-
-	return listenfd;
-}
-
 class ConnectionManager
 {
-	std::map<int, sockaddr_in> connections;  // fd -> sockaddr_in
-	std::map<int, std::string> fd_to_identifier;
-	std::map<std::string, std::vector<int>> identifier_to_fds;
-	std::map<std::string, std::barrier<>*> identifier_to_barrier;
+	std::map<sockaddr_in, std::string, AddrComparator> socket_to_identifier;
+	std::map<std::string, std::vector<sockaddr_in>> identifier_to_sockets;
 
-	const static int max_connections = 2;
-	std::mutex _mtx;
 public:
-	bool is_connection_full(std::string& identifier)
+	void register_connection(sockaddr_in addr, std::string& identifier)
 	{
-		if (identifier_to_fds.find(identifier) == identifier_to_fds.end())
-			return false;
-
-		return identifier_to_fds.at(identifier).size() == max_connections;
+		remove_socket(addr);
+		socket_to_identifier[addr] = identifier;
+		identifier_to_sockets[identifier].push_back(addr);
 	}
 
-	bool register_connection(int fd, sockaddr_in addr, std::string& identifier)
+	void remove_socket(const sockaddr_in& sockfd)
 	{
-		std::lock_guard<std::mutex> lock(_mtx);
-		if (is_connection_full(identifier))
-			return false;
+		if (socket_to_identifier.find(sockfd) == socket_to_identifier.end())
+			return;
 
-		assert(connections.find(fd) == connections.end());
+		std::string identifier = socket_to_identifier[sockfd];
+		socket_to_identifier.erase(sockfd);
+		auto& vec = identifier_to_sockets[identifier];
 
-		connections[fd] = addr;
-		identifier_to_fds[identifier].push_back(fd);
-		fd_to_identifier[fd] = identifier;
-
-		if (identifier_to_barrier[identifier] == nullptr)
-			identifier_to_barrier[identifier] = new std::barrier(max_connections);
-		return true;
-	}
-
-	std::vector<std::pair<int, sockaddr_in>> get_peers(int fd)
-	{
-		std::lock_guard<std::mutex> lock(_mtx);
-		if (connections.find(fd) == connections.end())
-			return {};
-
-		const auto& identifier = fd_to_identifier.at(fd);
-		std::vector<int> fds = identifier_to_fds.at(identifier);
-		std::vector<std::pair<int, sockaddr_in>> peers;
-		for (int fd : fds)
-			peers.push_back({fd, connections.at(fd)});
-		return peers;
-	}
-
-	bool remove_fd(int fd)
-	{
-		std::lock_guard<std::mutex> lock(_mtx);
-		if (connections.find(fd) == connections.end())
-			return false;
-		
-		const auto& identifier = fd_to_identifier.at(fd);
-		auto &vec = identifier_to_fds[identifier];
 		for (int i = 0; i < vec.size(); ++i)
 		{
-			if (vec[i] != fd)
+			if (comp(vec[i], sockfd) != 0)
 				continue;
-				
+			
 			vec[i] = vec.back();
 			vec.pop_back();
-			break;
 		}
 
-		if (vec.size() == 0)
-		{
-			identifier_to_fds.erase(identifier);
-			delete identifier_to_barrier[identifier];
-			identifier_to_barrier.erase(identifier);
-		}
-
-		connections.erase(fd);
-		fd_to_identifier.erase(fd);
-		return true;
+		if (vec.empty())
+			identifier_to_sockets.erase(identifier);
 	}
 
-	bool remove_by_identifier(const std::string& identifier)
+	void remove_identifier(const std::string& identifier)
 	{
-		std::lock_guard<std::mutex> lock(_mtx);
-		if (identifier_to_fds.find(identifier) == identifier_to_fds.end())
-			return false;
+		if (identifier_to_sockets.find(identifier) == identifier_to_sockets.end())
+			return;
 
-		auto &vec = identifier_to_fds[identifier];
-		for (int fd : vec)
-		{
-			connections.erase(fd);
-			fd_to_identifier.erase(fd);
-		}
-
-		identifier_to_fds.erase(identifier);
-		delete identifier_to_barrier[identifier];
-		identifier_to_barrier.erase(identifier);
-		return true;
-	}
-
-	void wait_on_barrier(int fd)
-	{
-		{
-			std::lock_guard<std::mutex> lock(_mtx);
-			if (fd_to_identifier.find(fd) == fd_to_identifier.end())
-				return;
-		}
-
-		const auto& identifier = fd_to_identifier.at(fd);
+		auto& vec = identifier_to_sockets[identifier];
+		for (int i = 0; i < vec.size(); ++i)
+			socket_to_identifier.erase(vec[i]);
 		
-		identifier_to_barrier.at(identifier)->arrive_and_wait();
+		identifier_to_sockets.erase(identifier);
+	}
+
+	const std::vector<sockaddr_in> get_peers(const std::string& identifier) const
+	{
+		if (get_connection_count(identifier) == 0)
+			return {};
+
+		return identifier_to_sockets.at(identifier);
+	}
+
+	int get_connection_count(const std::string& identifier) const
+	{
+		if (identifier_to_sockets.find(identifier) == identifier_to_sockets.end())
+			return 0;
+		return identifier_to_sockets.at(identifier).size();
 	}
 };
 
-void handle_connection(int clifd, sockaddr_in cliaddr, ConnectionManager& cm)
+void handle_read(int sockfd, sockaddr_in& sender, std::string& identifier, ConnectionManager& cm)
 {
-	auto prefix = get_printable_IP(cliaddr) + ": ";
-	
-	char BUFF[BUFFSIZE];
-	int n = read(clifd, BUFF, BUFFSIZE);
-	if (n < 0) 
-	{
-		perror("read");
-		std::clog << prefix << "Connection terminated unexpectedly!" << std::endl;
-		close(clifd);
-		return;
-	}
-
-	if (n == 0)
-	{
-		std::clog << prefix << "Client closed the connection without sending identifier!" << std::endl;
-		close(clifd);
-		return;
-	}
-
-	std::string identifier(BUFF, n);
+	auto prefix = get_printable_IP(sender) + ": ";
 	identifier.erase(std::remove_if(identifier.begin(), identifier.end(), ::isspace), identifier.end());
-	std::clog << prefix << "Client sent the identifier: `" << identifier << "`" << std::endl;
+	std::clog << prefix << "Received identifier `" << identifier << "`" << std::endl;
 
-	if (!cm.register_connection(clifd, cliaddr, identifier))
-	{
-		std::clog << prefix << "2 clients are already waiting on this identifier. Closing the connection." << std::endl;
-		close(clifd);
+	cm.register_connection(sender, identifier);
+
+	std::clog << prefix << "Number of peers under same identifier - " << cm.get_connection_count(identifier) << std::endl;
+	if (cm.get_connection_count(identifier) != 2)
 		return;
-	}
-
-	cm.wait_on_barrier(clifd);
-	auto peers = cm.get_peers(clifd);
-
-	for (auto &[fd, addr]: peers)
+	
+	auto& peers = cm.get_peers(identifier);
+	for (int i = 0; i < peers.size(); ++i)
 	{
-		if (fd == clifd)
-			continue;
-		
-		std::clog << prefix << "Sending PEER information to the client - " << get_printable_IP(addr) << std::endl;
-		
-		if ((n = write(clifd, &addr, sizeof(addr))) < 0)
+		for (int j = 0; j < peers.size(); ++j)
 		{
-			std::clog << prefix << "Client closed the connection without receiving peer!" << std::endl;
-			perror("write");
+			if (i == j)
+				continue;
+
+			const sockaddr_in& peer1 = peers[i];
+			const sockaddr_in& peer2 = peers[j];
+			auto msg = get_printable_IP(peer2);
+
+			std::clog << get_printable_IP(peer1) << ": Will receive " << msg << std::endl;
+			sendto(sockfd, msg.c_str(), msg.size(), 0, (struct sockaddr*)&peer1, sizeof(peer1));
 		}
 	}
-	
-	cm.wait_on_barrier(clifd);
-	
-	std::clog << prefix << "Closing the connection." << std::endl;
-	close(clifd);
 
-	if (cm.remove_by_identifier(identifier))
-		std::clog << prefix << "Cleared the identifier `" << identifier << "`" << std::endl;
+	cm.remove_identifier(identifier);
 }
 
 int main(int argc, char** argv)
@@ -250,26 +162,43 @@ int main(int argc, char** argv)
 	ss << argv[1];
 	int port;
 	ss >> port;
-	std::clog << "Will open the realy server on port " << port << std::endl;
+	std::clog << "Will open the relay server (UDP) on port " << port << std::endl;
+    
+	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sockfd < 0) 
+	{
+		perror("socket error");
+		exit(-1);
+	}
+	
+	// Bind to local port
+	struct sockaddr_in selfAddr;
+	memset(&selfAddr, 0, sizeof(selfAddr));
+	selfAddr.sin_family = AF_INET;
+	selfAddr.sin_addr.s_addr = htonl(INADDR_ANY);  // Bind to any available local interface
+	selfAddr.sin_port = htons(port);  // Specify the port you want to bind to
 
-    int passive_fd = passive_tcp_socket(port);
+	if (bind(sockfd, (struct sockaddr*)&selfAddr, sizeof(selfAddr)) == -1) 
+	{
+		perror("bind_listen");
+		close(sockfd);
+		exit(EXIT_FAILURE);
+	}
+
 	ConnectionManager cm;
-
 	while (true)
 	{
+		char BUFF[BUFFSIZE];
 		sockaddr_in cliaddr;
 		socklen_t clilen = sizeof(cliaddr);
-		int client_fd = accept(passive_fd, (sockaddr*)&cliaddr, &clilen);
-
-		if (client_fd < 0) 
+		int n = recvfrom(sockfd, BUFF, BUFFSIZE, 0, (struct sockaddr*)&cliaddr, &clilen);
+		if (n < 0) 
 		{
-			perror("accept");
-			exit(EXIT_FAILURE);
+			perror("recvfrom");
+			continue;
 		}
 
-		std::thread([client_fd, cliaddr, &cm]() {
-			std::clog << get_printable_IP(cliaddr) << ": Accepted a new connection." << std::endl;
-			handle_connection(client_fd, cliaddr, cm);
-		}).detach();
-	};
+		std::string identifier(BUFF, n);
+		handle_read(sockfd, cliaddr, identifier, cm);
+	}
 }
