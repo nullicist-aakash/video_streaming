@@ -6,19 +6,6 @@
 
 namespace PEER
 {
-    sockaddr_in get_sockaddr(const char* ip, const int port)
-    {
-        sockaddr_in addr;
-        memset(&addr, 0, sizeof(addr));
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons(port);
-        addr.sin_addr.s_addr = inet_addr(ip);
-
-        if (addr.sin_addr.s_addr == -1)
-            exit(EXIT_FAILURE);
-        return addr;
-    }
-
     PeerAddress get_pa_from_relay(int relay_socket, const sockaddr_in& relay_addr, const char* identifier)
     {
         auto identifier_len = strlen(identifier);
@@ -98,7 +85,7 @@ namespace PEER
         thread.join();
     }
 
-    int get_peer_udp(const char* relay_ip, const int relay_port, const char* identifier)
+    int get_peer_udp(Config& config)
     {
         auto relay_socket = socket(AF_INET, SOCK_DGRAM, 0);
         if (relay_socket < 0)
@@ -107,9 +94,35 @@ namespace PEER
             exit(EXIT_FAILURE);
         }
 
-        auto relay_addr = get_sockaddr(relay_ip, relay_port);
-        auto pa = get_pa_from_relay(relay_socket, relay_addr, identifier);
-        make_connection_with_peer(relay_socket, identifier, pa);
+        struct sockaddr_in selfAddr;
+        memset(&selfAddr, 0, sizeof(selfAddr));
+        selfAddr.sin_family = AF_INET;
+        selfAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+        selfAddr.sin_port = config.self_udp_port_n;
+    
+        if (bind(relay_socket, (struct sockaddr*)&selfAddr, sizeof(selfAddr)) == -1)
+        {
+                perror("bind_listen");
+                exit(EXIT_FAILURE);
+        }
+
+        sockaddr_in relay_addr;
+        memset(&relay_addr, 0, sizeof(sockaddr_in));
+        relay_addr.sin_family = AF_INET;
+        relay_addr.sin_port = config.relay_port_n;
+        relay_addr.sin_addr.s_addr = config.relay_ip_n;
+        
+        PeerAddress pa;
+
+        if (config.peer_ip_n == 0 && config.peer_port_n == 0)
+            pa = get_pa_from_relay(relay_socket, relay_addr, config.identifier.c_str());
+        else
+        {
+            pa.peer_ip = config.peer_ip_n;
+            pa.peer_port = config.peer_port_n;
+        }
+        
+        make_connection_with_peer(relay_socket, config.identifier.c_str(), pa);
 
         return relay_socket;
     }

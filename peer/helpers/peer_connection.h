@@ -1,4 +1,7 @@
+#include "config.h"
+#include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 
 namespace PEER
 {
@@ -17,8 +20,7 @@ namespace PEER
         RECEIVED_PEER
     };
 
-    sockaddr_in get_sockaddr(const char*, const int);
     PeerAddress get_pa_from_relay(int, const sockaddr_in&, const char*);
     void make_connection_with_peer(int, const char*, const PeerAddress&);
-    int get_peer_udp(const char* relay_ip, const int relay_port, const char* identifier);
+    int get_peer_udp(Config&);
 }
