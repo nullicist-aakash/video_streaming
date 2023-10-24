@@ -1,6 +1,10 @@
 relay_ip 127.0.0.1
 relay_port 8080
 
+peer_ip 0.0.0.0
+peer_port 0
+
+self_udp_port 0
 self_server_port 8082
 remote_mimic_port 8083
 

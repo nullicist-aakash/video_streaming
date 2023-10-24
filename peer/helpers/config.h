@@ -16,3 +16,5 @@ struct Config
 
     friend std::ostream& operator<<(std::ostream& os, const Config& config);
 };
+
+Config get_config_from_file(const char* config_loc);
