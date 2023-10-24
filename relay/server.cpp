@@ -143,7 +143,10 @@ void handle_read(int sockfd, sockaddr_in& sender, std::string& identifier, Conne
 			auto msg = get_printable_IP(peer2);
 
 			std::clog << get_printable_IP(peer1) << ": Will receive " << msg << std::endl;
-			sendto(sockfd, msg.c_str(), msg.size(), 0, (struct sockaddr*)&peer1, sizeof(peer1));
+
+			int times = 3;
+			while (times--)
+				sendto(sockfd, msg.c_str(), msg.size(), 0, (struct sockaddr*)&peer1, sizeof(peer1));
 		}
 	}
 
