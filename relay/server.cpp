@@ -44,6 +44,14 @@ struct AddrComparator
    }
 };
 
+struct PeerAddress
+{
+	uint32_t self_ip;
+	uint32_t peer_ip;
+	uint16_t self_port;
+	uint16_t peer_port;
+};
+
 const std::string get_printable_IP(const sockaddr_in& addr)
 {
     // Using 'https://www.qnx.com/developers/docs/6.5.0SP1.update/com.qnx.doc.neutrino_lib_ref/i/inet_ntop.html'
@@ -51,7 +59,7 @@ const std::string get_printable_IP(const sockaddr_in& addr)
     
 	if (inet_ntop(addr.sin_family, &addr.sin_addr, printable_address, sizeof(printable_address)) != nullptr)
         return std::string(printable_address) + ":" + std::to_string(ntohs(addr.sin_port));
-    
+
 	return "ERROR:" + std::to_string(ntohs(addr.sin_port));
 }
 
@@ -144,9 +152,15 @@ void handle_read(int sockfd, sockaddr_in& sender, std::string& identifier, Conne
 
 			std::clog << get_printable_IP(peer1) << ": Will receive " << msg << std::endl;
 
+			PeerAddress pa;
+			pa.self_ip = peer1.sin_addr.s_addr;
+			pa.self_port = peer1.sin_port;
+			pa.peer_ip = peer2.sin_addr.s_addr;
+			pa.peer_port = peer2.sin_port;
+
 			int times = 3;
 			while (times--)
-				sendto(sockfd, msg.c_str(), msg.size(), 0, (struct sockaddr*)&peer1, sizeof(peer1));
+				sendto(sockfd, (char*)&pa, sizeof(pa), 0, (struct sockaddr*)&peer1, sizeof(peer1));
 		}
 	}
 
