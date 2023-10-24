@@ -20,11 +20,11 @@ int main(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
     
-    auto config = get_config_from_file(argv[1]);
+    auto config = CONFIG::get_config_from_file(argv[1]);
     std::clog << "Config: " << std::endl;
     std::clog << config << std::endl;
 
-    auto peer_socket = PEER::get_peer_udp(config);
+    auto peer_socket = PEER_CONNECTION::get_peer_udp(config);
     std::clog << "Succesfully connected with PEER!" << std::endl;
     
     return 0;

@@ -1,6 +1,6 @@
 #pragma once
 
-namespace PEER
+namespace PEER_CONNECTION
 {
     
 }

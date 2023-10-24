@@ -4,7 +4,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-namespace PEER
+namespace PEER_CONNECTION
 {
     struct PeerAddress
     {
@@ -23,5 +23,5 @@ namespace PEER
 
     PeerAddress get_pa_from_relay(int, const sockaddr_in&, const char*);
     void make_connection_with_peer(int, const char*, const PeerAddress&);
-    int get_peer_udp(Config&);
+    int get_peer_udp(CONFIG::Config&);
 }

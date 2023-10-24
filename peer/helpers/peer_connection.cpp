@@ -4,7 +4,7 @@
 #include <arpa/inet.h>
 #include <thread>
 
-namespace PEER
+namespace PEER_CONNECTION
 {
     PeerAddress get_pa_from_relay(int relay_socket, const sockaddr_in& relay_addr, const char* identifier)
     {
@@ -85,7 +85,7 @@ namespace PEER
         thread.join();
     }
 
-    int get_peer_udp(Config& config)
+    int get_peer_udp(CONFIG::Config& config)
     {
         auto relay_socket = socket(AF_INET, SOCK_DGRAM, 0);
         if (relay_socket < 0)
