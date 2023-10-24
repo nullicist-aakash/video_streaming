@@ -62,9 +62,10 @@ bool ConnectionManager::is_local_ip(uint32_t ip) const
     return false;
 }
 
-ConnectionManager::ConnectionManager(const CONFIG::Config& config) :
+ConnectionManager::ConnectionManager(const CONFIG::Config& config, int peer_socket) :
     config { config },
-    local_ips { get_local_ips() } 
+    local_ips { get_local_ips() },
+    peer_socket { peer_socket }
 {
     if (local_ips.empty())
         throw std::runtime_error("No IP address assigned to any interface");
@@ -128,4 +129,9 @@ PacketDirection ConnectionManager::get_packet_direction(const iphdr* ip_header, 
         return PacketDirection::LOCAL_CLIENT_TO_REMOTE_SERVER;
 
     return PacketDirection::UNKNOWN;
+}
+
+void ConnectionManager::handle_packets(int raw_socket)
+{
+
 }

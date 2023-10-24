@@ -17,6 +17,7 @@ enum class PacketDirection
 
 class ConnectionManager
 {
+    const int peer_socket;
     const CONFIG::Config config;
     const std::vector<uint32_t> local_ips;
     // This should not be named as generated_to_remote due to convention
@@ -28,5 +29,6 @@ class ConnectionManager
     PacketDirection get_packet_direction(const iphdr*, int) const;
 
 public:
-    ConnectionManager(const CONFIG::Config& config);
+    ConnectionManager(const CONFIG::Config& config, int peer_socket);
+    void handle_packets(int raw_socket);
 };
