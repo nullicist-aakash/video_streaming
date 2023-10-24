@@ -1,5 +1,5 @@
 make:
-	g++ -o client.out tcp_client.cpp
+	g++ -o peer.out *.cpp
 
 clean:
-	rm client.out
+	rm peer.out
