@@ -16,9 +16,7 @@
 #include <mutex>
 
 const int BUFFER_SIZE = 65536;
-/*
- * Helper functions
-*/
+
 std::vector<uint32_t> get_local_ips() 
 {
     ifaddrs* ifAddrStruct = nullptr;
@@ -61,17 +59,6 @@ const udphdr* get_udp_header(const iphdr* ip_header)
     return ip_header->protocol == IPPROTO_TCP ? nullptr : (udphdr*)((char*)ip_header + ip_header->ihl * 4);
 }
 
-/*
- * ConnectionManager implementation
-*/
-bool ConnectionManager::is_local_ip(uint32_t ip) const
-{
-    for (auto &ipn: this->local_ips)
-        if (ipn == ip)
-            return true;
-    return false;
-}
-
 ConnectionManager::ConnectionManager(const CONFIG::Config& config, int peer_socket) :
     config { config },
     local_ips { get_local_ips() },
@@ -83,6 +70,14 @@ ConnectionManager::ConnectionManager(const CONFIG::Config& config, int peer_sock
     std::cout << std::endl;
     for (auto &ipn: local_ips)
         std::cout << "> Local IP: " << inet_ntoa({ ipn }) << std::endl;
+}
+
+bool ConnectionManager::is_local_ip(uint32_t ip) const
+{
+    for (auto &ipn: this->local_ips)
+        if (ipn == ip)
+            return true;
+    return false;
 }
 
 PacketDirection ConnectionManager::get_packet_direction(const iphdr* ip_header, int len) const
