@@ -94,16 +94,19 @@ namespace PEER_CONNECTION
             exit(EXIT_FAILURE);
         }
 
-        struct sockaddr_in selfAddr;
-        memset(&selfAddr, 0, sizeof(selfAddr));
-        selfAddr.sin_family = AF_INET;
-        selfAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-        selfAddr.sin_port = config.self_udp_port_n;
-    
-        if (bind(relay_socket, (struct sockaddr*)&selfAddr, sizeof(selfAddr)) == -1)
+        if (config.self_udp_port_n > 0)
         {
+            struct sockaddr_in selfAddr;
+            memset(&selfAddr, 0, sizeof(selfAddr));
+            selfAddr.sin_family = AF_INET;
+            selfAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+            selfAddr.sin_port = config.self_udp_port_n;
+        
+            if (bind(relay_socket, (struct sockaddr*)&selfAddr, sizeof(selfAddr)) == -1)
+            {
                 perror("bind_listen");
                 exit(EXIT_FAILURE);
+            }
         }
 
         sockaddr_in relay_addr;
@@ -114,7 +117,7 @@ namespace PEER_CONNECTION
         
         PeerAddress pa;
 
-        if (config.peer_ip_n == 0 && config.peer_port_n == 0)
+        if (config.peer_ip_n == 0 || config.peer_port_n == 0 || config.self_udp_port_n == 0)
             pa = get_pa_from_relay(relay_socket, relay_addr, config.identifier.c_str());
         else
         {
@@ -123,6 +126,9 @@ namespace PEER_CONNECTION
         }
         
         make_connection_with_peer(relay_socket, config.identifier.c_str(), pa);
+        config.peer_ip_n = pa.peer_ip;
+        config.peer_port_n = pa.peer_port;
+        config.self_udp_port_n = pa.self_port;
 
         return relay_socket;
     }
