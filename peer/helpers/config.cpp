@@ -14,7 +14,7 @@ namespace CONFIG
         os << std::endl;
         os << "> Self UDP Port     " << ntohs(config.self_udp_port_n) << std::endl;
         os << "> Self Server Port  " << ntohs(config.self_server_port_n) << std::endl;
-        os << "> Remote Mimic Port " << ntohs(config.remote_mimic_port_n) << std::endl;
+        os << "> Self Mimic Port   " << ntohs(config.self_mimic_port_n) << std::endl;
         os << std::endl;
         os << "> Identifier        " << config.identifier << std::endl;
         os << std::endl;
@@ -83,10 +83,10 @@ namespace CONFIG
                 inf >> config.self_server_port_n;
                 config.self_server_port_n = htons(config.self_server_port_n);
             }
-            else if (input == "remote_mimic_port")
+            else if (input == "self_mimic_port")
             {
-                inf >> config.remote_mimic_port_n;
-                config.remote_mimic_port_n = htons(config.remote_mimic_port_n);
+                inf >> config.self_mimic_port_n;
+                config.self_mimic_port_n = htons(config.self_mimic_port_n);
             }
             else if (input == "identifier")
             {

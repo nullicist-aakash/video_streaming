@@ -27,5 +27,7 @@ int main(int argc, char** argv)
     auto peer_socket = PEER_CONNECTION::get_peer_udp(config);
     std::clog << "Succesfully connected with PEER!" << std::endl;
     
+    ConnectionManager connection_manager(config);
+
     return 0;
 }
