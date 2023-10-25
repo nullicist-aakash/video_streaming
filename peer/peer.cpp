@@ -9,6 +9,7 @@
 
 #include "helpers/config.h"
 #include "helpers/peer_connection.h"
+#include "helpers/packet_builder.h"
 
 #define BUFFER_SIZE 65536
 
@@ -29,13 +30,14 @@ int main(int argc, char** argv)
     std::cout << "> Peer Port         " << ntohs(config.peer_port_n) << std::endl;
     
     int raw_tcp_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
-    if (raw_tcp_socket < 0) 
+    if (raw_tcp_socket < 0)
     {
         perror("raw socket creation");
         exit(EXIT_FAILURE);
     }
 
-    PEER_CONNECTION::ConnectionManager connection_manager(config, peer_socket, raw_tcp_socket);
+    PEER_CONNECTION::ConnectionManager cm(config, peer_socket, raw_tcp_socket);
+    packet_handler(cm);
 
     close(raw_tcp_socket);
     close(peer_socket);
