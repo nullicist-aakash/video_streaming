@@ -8,6 +8,7 @@
 #include <netinet/ip.h>
 #include <arpa/inet.h>
 #include <cassert>
+#include <iostream>
 #include <thread>
 
 using namespace PEER_CONNECTION;
@@ -84,7 +85,33 @@ bool is_remote_server_to_local_client(ConnectionManager& cm, char* packet, int l
     return cm.is_local_client_port(tcp_header->dest);
 }
 
-void generate_packet(ConnectionManager& cm, void* source, PacketDirection pd, void* buff, int &len)
+void generate_udp_packet(ConnectionManager& cm, char* source, PacketDirection pd, void* buff, ssize_t &len)
+{
+    std::clog << "Generating a UDP packet!" << std::endl;
+
+    auto ip_header = (iphdr*)source;
+    auto ip_len = (ip_header->ihl << 2);
+    auto tcp_header = (tcphdr*)(source + ip_len);
+
+    // Modify source and destination ports
+    if (pd == PacketDirection::LOCAL_SERVER_TO_REMOTE_CLIENT)
+    {
+        tcp_header->source = 0;
+        tcp_header->dest = cm.get_remote_port_from_generated(tcp_header->dest);
+    }
+    else if (pd == PacketDirection::LOCAL_CLIENT_TO_REMOTE_SERVER)
+        tcp_header->dest = 0;
+    else assert(false);
+
+    // Reset checksum to 0 as no one will read it till remote end
+    tcp_header->check = 0;
+
+    // set length and copy contents
+    len -= ip_len;
+    memcpy(buff, tcp_header, len);
+}
+
+void generate_tcp_packet(ConnectionManager& cm, char* source, PacketDirection pd, void* buff, int &len)
 {
 
 }
@@ -113,16 +140,16 @@ void packet_handler(ConnectionManager& cm)
                 exit(EXIT_FAILURE);
             }
 
-            int send_len = BUFFER_SIZE;
             if (is_local_server_to_remote_client(cm, receive_BUFF, dataSize))
-                generate_packet(cm, receive_BUFF, PacketDirection::LOCAL_SERVER_TO_REMOTE_CLIENT, send_BUFF, send_len);
+                generate_udp_packet(cm, receive_BUFF, PacketDirection::LOCAL_SERVER_TO_REMOTE_CLIENT, send_BUFF, dataSize);
             else if (is_local_client_to_remote_server(cm, receive_BUFF, dataSize))
-                generate_packet(cm, receive_BUFF, PacketDirection::LOCAL_CLIENT_TO_REMOTE_SERVER, send_BUFF, send_len);
+                generate_udp_packet(cm, receive_BUFF, PacketDirection::LOCAL_CLIENT_TO_REMOTE_SERVER, send_BUFF, dataSize);
             else continue;
 
             // send data as packet over udp
             socklen = sizeof(sockaddr_in);
-            sendto(cm.peer_socket, send_BUFF, send_len, 0, (sockaddr*)&peer_addr, socklen);
+            if (sendto(cm.peer_socket, send_BUFF, dataSize, 0, (sockaddr*)&peer_addr, socklen) < 0)
+                perror("udp send");
         }
     }).detach();
 
@@ -146,9 +173,9 @@ void packet_handler(ConnectionManager& cm)
 
         int send_len = BUFFER_SIZE;
         if (is_remote_client_to_local_server(cm, receive_BUFF, dataSize))
-            generate_packet(cm, receive_BUFF, PacketDirection::REMOTE_CLIENT_TO_LOCAL_SERVER, send_BUFF, send_len);
+            generate_tcp_packet(cm, receive_BUFF, PacketDirection::REMOTE_CLIENT_TO_LOCAL_SERVER, send_BUFF, send_len);
         else if (is_remote_server_to_local_client(cm, receive_BUFF, dataSize))
-            generate_packet(cm, receive_BUFF, PacketDirection::REMOTE_SERVER_TO_LOCAL_CLIENT, send_BUFF, send_len);
+            generate_tcp_packet(cm, receive_BUFF, PacketDirection::REMOTE_SERVER_TO_LOCAL_CLIENT, send_BUFF, send_len);
         else continue;
 
         // send data as packet over raw tcp

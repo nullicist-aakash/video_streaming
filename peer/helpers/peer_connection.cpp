@@ -16,6 +16,18 @@ enum class ConnectionState
 
 namespace PEER_CONNECTION
 {
+    void add_ip_table_entry(uint32_t port_n)
+    {
+        std::string s = std::string("sudo iptables -A OUTPUT -p tcp -m tcp --sport ") + std::to_string(ntohs(port_n)) + std::string(" --tcp-flags RST RST -j DROP");
+        
+        if (fork() == 0)
+        {
+            std::clog << "Executing: " << s << std::endl;
+            system(s.c_str());
+            exit(0);
+        }
+    }
+
     SocketPair get_pa_from_relay(int relay_socket, const sockaddr_in& relay_addr, const char* identifier)
     {
         auto identifier_len = strlen(identifier);
@@ -183,18 +195,9 @@ namespace PEER_CONNECTION
         std::clog << std::endl;
         for (auto &ipn: local_ips)
             std::clog << "> Local IP: " << inet_ntoa({ ipn }) << std::endl;
-    }
-
-    void ConnectionManager::add_ip_table_entry(uint32_t port_n)
-    {
-        std::string s = std::string("sudo iptables -A OUTPUT -p tcp -m tcp --sport ") + std::to_string(ntohs(port_n)) + std::string(" --tcp-flags RST RST -j DROP");
         
-        if (fork() == 0)
-        {
-            std::clog << "Executing: " << s << std::endl;
-            system(s.c_str());
-            exit(0);
-        }
+        // add ip table entry for all mimic port
+        add_ip_table_entry(config.self_mimic_port_n);
     }
 
     bool ConnectionManager::is_local_ip(uint32_t ip) const
@@ -212,7 +215,7 @@ namespace PEER_CONNECTION
 
         this->remote_to_generated[port_n] = this->generated_port_counter;
         this->rev_remote_to_generated[this->generated_port_counter] = port_n;
-        this->add_ip_table_entry(port_n);
+        add_ip_table_entry(port_n);
         return this->generated_port_counter++;
     }
 

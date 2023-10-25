@@ -25,7 +25,6 @@ namespace PEER_CONNECTION
         std::set<int> local_client_ports;
         int generated_port_counter = 8084;
 
-        void add_ip_table_entry(uint32_t port_n);
     public:
         const int peer_socket;
         const int raw_tcp_socket;
