@@ -1,7 +1,9 @@
 #pragma once
 #include "config.h"
-
+#include "peer_connection.h"
 #include <netinet/ip.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
 #include <vector>
 #include <map>
 #include <set>
@@ -29,6 +31,12 @@ class ConnectionManager
 
     bool is_local_ip(uint32_t) const;
     PacketDirection get_packet_direction(const iphdr*, int) const;
+    void handle_local_server_to_remote_client(const iphdr*, int, const tcphdr*);
+    void handle_local_client_to_remote_server(const iphdr*, int, const tcphdr*);
+    void handle_remote_client_to_local_server(const iphdr*, int, const tcphdr*, const udphdr*);
+    void handle_remote_server_to_local_client(const iphdr*, int, const tcphdr*, const udphdr*);
+    iphdr* tcp_to_udp(const iphdr*, const PEER_CONNECTION::SocketPair&);
+    iphdr* udp_to_tcp(const iphdr*, const PEER_CONNECTION::SocketPair&);
 
 public:
     void add_ip_table_entry(uint32_t port_n);

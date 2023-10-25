@@ -6,7 +6,7 @@
 
 namespace PEER_CONNECTION
 {
-    PeerAddress get_pa_from_relay(int relay_socket, const sockaddr_in& relay_addr, const char* identifier)
+    SocketPair get_pa_from_relay(int relay_socket, const sockaddr_in& relay_addr, const char* identifier)
     {
         auto identifier_len = strlen(identifier);
         ConnectionState state = ConnectionState::STARTED;
@@ -21,7 +21,7 @@ namespace PEER_CONNECTION
             }
         });
 
-        PeerAddress pa;
+        SocketPair pa;
         while (true)
         {
             int n = recvfrom(relay_socket, &pa, sizeof(pa), 0, NULL, NULL);
@@ -40,7 +40,7 @@ namespace PEER_CONNECTION
         return pa;
     }
 
-    void make_connection_with_peer(int relay_socket, const char* identifier, const PeerAddress& pa)
+    void make_connection_with_peer(int relay_socket, const char* identifier, const SocketPair& pa)
     {
         sockaddr_in peer_addr;
         memset(&peer_addr, 0, sizeof(peer_addr));
@@ -115,7 +115,7 @@ namespace PEER_CONNECTION
         relay_addr.sin_port = config.relay_port_n;
         relay_addr.sin_addr.s_addr = config.relay_ip_n;
         
-        PeerAddress pa;
+        SocketPair pa;
 
         if (config.peer_ip_n == 0 || config.peer_port_n == 0 || config.self_udp_port_n == 0)
             pa = get_pa_from_relay(relay_socket, relay_addr, config.identifier.c_str());

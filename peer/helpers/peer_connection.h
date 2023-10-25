@@ -6,7 +6,7 @@
 
 namespace PEER_CONNECTION
 {
-    struct PeerAddress
+    struct SocketPair
     {
         uint32_t self_ip;
         uint32_t peer_ip;
@@ -21,7 +21,7 @@ namespace PEER_CONNECTION
         RECEIVED_PEER
     };
 
-    PeerAddress get_pa_from_relay(int, const sockaddr_in&, const char*);
-    void make_connection_with_peer(int, const char*, const PeerAddress&);
+    SocketPair get_pa_from_relay(int, const sockaddr_in&, const char*);
+    void make_connection_with_peer(int, const char*, const SocketPair&);
     int get_peer_udp(CONFIG::Config&);
 }
