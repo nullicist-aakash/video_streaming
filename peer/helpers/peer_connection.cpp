@@ -1,8 +1,18 @@
 #include "peer_connection.h"
 #include <iostream>
 #include <string.h>
-#include <arpa/inet.h>
 #include <thread>
+#include <vector>
+#include <ifaddrs.h>
+#include <arpa/inet.h>
+#include <sys/param.h>
+
+enum class ConnectionState
+{
+    STARTED,
+    SENT_SELF,
+    RECEIVED_PEER
+};
 
 namespace PEER_CONNECTION
 {
@@ -131,5 +141,105 @@ namespace PEER_CONNECTION
         config.self_udp_port_n = pa.self_port;
 
         return relay_socket;
+    }
+
+    std::vector<uint32_t> get_local_ips() 
+    {
+        ifaddrs* ifAddrStruct = nullptr;
+        getifaddrs(&ifAddrStruct);
+        if (ifAddrStruct == nullptr)
+            return {};
+
+        bool found = false;
+
+        std::vector<uint32_t> ips;
+        for (ifaddrs* ifa = ifAddrStruct; ifa != nullptr; ifa = ifa->ifa_next) 
+        {
+            if (ifa->ifa_addr == nullptr || ifa->ifa_addr->sa_family != AF_INET)
+                continue;
+
+            auto ipn = ((struct sockaddr_in*)ifa->ifa_addr)->sin_addr.s_addr;
+            if (ipn == 0 || ipn == 0xFFFFFFFF)
+                continue;
+                
+            ips.push_back(ipn);
+        }
+
+        freeifaddrs(ifAddrStruct);
+        return ips;
+    }
+
+    ConnectionManager::ConnectionManager(
+        const CONFIG::Config& config, int peer_socket,
+        int raw_tcp_socket) :
+        config { config },
+        local_ips { get_local_ips() },
+        peer_socket { peer_socket },
+        raw_tcp_socket { raw_tcp_socket }
+    {
+        if (local_ips.empty())
+            throw std::runtime_error("No IP address assigned to any interface");
+        
+        std::clog << std::endl;
+        for (auto &ipn: local_ips)
+            std::clog << "> Local IP: " << inet_ntoa({ ipn }) << std::endl;
+    }
+
+    void ConnectionManager::add_ip_table_entry(uint32_t port_n)
+    {
+        std::string s = std::string("sudo iptables -A OUTPUT -p tcp -m tcp --sport ") + std::to_string(ntohs(port_n)) + std::string(" --tcp-flags RST RST -j DROP");
+        
+        if (fork() == 0)
+        {
+            std::clog << "Executing: " << s << std::endl;
+            system(s.c_str());
+            exit(0);
+        }
+    }
+
+    bool ConnectionManager::is_local_ip(uint32_t ip) const
+    {
+        for (auto &ipn: this->local_ips)
+            if (ipn == ip)
+                return true;
+        return false;
+    }
+
+    uint32_t ConnectionManager::get_generated_port(uint32_t port_n)
+    {
+        if (this->remote_to_generated.find(port_n) != this->remote_to_generated.end())
+            return this->remote_to_generated[port_n];
+
+        this->remote_to_generated[port_n] = this->generated_port_counter;
+        this->rev_remote_to_generated[this->generated_port_counter] = port_n;
+        this->add_ip_table_entry(port_n);
+        return this->generated_port_counter++;
+    }
+
+    uint32_t ConnectionManager::get_remote_port_from_generated(uint32_t port_n)
+    {
+        if (is_local_generated_port(port_n))
+            return this->rev_remote_to_generated[port_n];
+        return 0;
+    }
+
+    void ConnectionManager::add_local_client_port(uint32_t port_n)
+    {
+        this->local_client_ports.insert(port_n);
+    }
+
+    bool ConnectionManager::is_local_client_port(uint32_t port_n)
+    {
+        return this->local_client_ports.find(port_n) != this->local_client_ports.end();
+    }
+
+    bool ConnectionManager::is_remote_client_port(uint32_t port_n)
+    {
+        return this->remote_to_generated.find(port_n) != this->remote_to_generated.end();
+    }
+
+    bool ConnectionManager::is_local_generated_port(uint32_t port_n)
+    {
+        return this->rev_remote_to_generated.find(port_n) != this->rev_remote_to_generated.end();
     }
 }
