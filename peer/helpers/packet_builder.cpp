@@ -21,6 +21,45 @@ enum class PacketDirection
     REMOTE_CLIENT_TO_LOCAL_SERVER
 };
 
+uint16_t compute_tcp_checksum(unsigned short* tcp_segment, int len, uint32_t saddr, uint32_t daddr) 
+{
+    unsigned long sum = 0;
+    ((struct tcphdr*)tcp_segment)->check = 0;;
+
+    // move past ports
+    tcp_segment += 2;
+    len -= 4;
+
+    // the source ip
+    sum += (saddr >> 16) & 0xFFFF;
+    sum += (saddr) & 0xFFFF;
+
+    // the dest ip
+    sum += (daddr >> 16) & 0xFFFF;
+    sum += (daddr) & 0xFFFF;
+
+    // protocol and reserved: 6
+    sum += htons(IPPROTO_TCP);
+
+    // the length
+    sum += htons(len);
+ 
+    // add the IP payload
+    // initialize checksum to 0
+    while (len > 1) 
+    {
+        sum += *tcp_segment++;
+        len -= 2;
+    }
+
+    if (len > 0) sum += ((*tcp_segment) & htons(0xFF00));
+
+    //Fold 32-bit sum to 16 bits: add carrier to result
+    while (sum >> 16) sum = (sum & 0xffff) + (sum >> 16);
+    sum = ~sum;
+    return sum;
+}
+
 bool is_local_server_to_remote_client(ConnectionManager& cm, char* packet, int len)
 {
     if (len < 40)
@@ -111,9 +150,27 @@ void generate_udp_packet(ConnectionManager& cm, char* source, PacketDirection pd
     memcpy(buff, tcp_header, len);
 }
 
-void generate_tcp_packet(ConnectionManager& cm, char* source, PacketDirection pd, void* buff, int &len)
+void generate_tcp_packet(ConnectionManager& cm, char* source, PacketDirection pd, void* buff, int len)
 {
+    std::clog << "Generating a TCP packet!" << std::endl;
 
+    memcpy(buff, source, len);
+
+    // Change source and destination ports
+    auto tcp_header = (tcphdr*)buff;
+    if (pd == PacketDirection::REMOTE_CLIENT_TO_LOCAL_SERVER)
+    {
+        tcp_header->source = cm.get_generated_port(tcp_header->source);
+        tcp_header->dest = cm.config.self_server_port_n;
+    }
+    else if (pd == PacketDirection::REMOTE_SERVER_TO_LOCAL_CLIENT)
+        tcp_header->source = cm.config.self_mimic_port_n;
+    else assert(false);
+    
+    // Compute new checksum
+    uint32_t ip;
+    inet_pton(AF_INET, "127.0.0.1", &ip); // Destination IP (adjust as needed)
+    tcp_header->check = compute_tcp_checksum((unsigned short*)tcp_header, len, ip, ip);
 }
 
 void packet_handler(ConnectionManager& cm)
