@@ -200,40 +200,31 @@ void packet_handler(ConnectionManager& cm)
 
             // send data as packet over udp
             socklen = sizeof(sockaddr_in);
-            if (sendto(cm.peer_socket, send_BUFF, dataSize, 0, (sockaddr*)&peer_addr, socklen) < 0)
-                perror("udp send");
+            cm.peer_socket.send(send_BUFF, cm.config.peer_info);
         }
     }).detach();
 
     // handle udp peer socket here
-    char receive_BUFF[BUFFER_SIZE];
     char send_BUFF[BUFFER_SIZE];
 
     while (true)
     {
-        sockaddr_in sourceAddr;
         socklen_t socklen = sizeof(sockaddr_in);
-        auto dataSize = recvfrom(cm.peer_socket, receive_BUFF, BUFFER_SIZE, 0, (struct sockaddr*)&sourceAddr, &socklen);
-        if (dataSize < 0)
-        {
-            perror("tcp raw read");
-            exit(EXIT_FAILURE);
-        }
+        auto [msg, source_sock] = cm.peer_socket.receive();
 
-        if (sourceAddr.sin_port != cm.config.peer_info.port.get_port() || sourceAddr.sin_addr.s_addr != cm.config.peer_info.ip.get_ip())
+        if (source_sock != cm.config.peer_info)
             continue;
 
         int send_len = BUFFER_SIZE;
-        if (is_remote_client_to_local_server(cm, receive_BUFF, dataSize))
-            generate_tcp_packet(cm, receive_BUFF, PacketDirection::REMOTE_CLIENT_TO_LOCAL_SERVER, send_BUFF, send_len);
-        else if (is_remote_server_to_local_client(cm, receive_BUFF, dataSize))
-            generate_tcp_packet(cm, receive_BUFF, PacketDirection::REMOTE_SERVER_TO_LOCAL_CLIENT, send_BUFF, send_len);
+        if (is_remote_client_to_local_server(cm, msg.data(), msg.size()))
+            generate_tcp_packet(cm, msg.data(), PacketDirection::REMOTE_CLIENT_TO_LOCAL_SERVER, send_BUFF, send_len);
+        else if (is_remote_server_to_local_client(cm, msg.data(), msg.size()))
+            generate_tcp_packet(cm, msg.data(), PacketDirection::REMOTE_SERVER_TO_LOCAL_CLIENT, send_BUFF, send_len);
         else continue;
 
-        // send data as packet over raw tcp
+        // send data as packet over raw tcp socket
+        sockaddr_in destAddr = Socket{IP{"127.0.0.1"}, PORT{((tcphdr*)send_BUFF)->dest, ByteOrder::NETWORK}};
         socklen = sizeof(sockaddr_in);
-        continue;
-        // TODO: What should be peer_addr here??????
-        sendto(cm.raw_tcp_socket, send_BUFF, send_len, 0, nullptr, socklen);
+        sendto(cm.raw_tcp_socket, send_BUFF, send_len, 0, (sockaddr*)&destAddr, socklen);
     }
 }

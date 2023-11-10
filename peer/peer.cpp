@@ -10,7 +10,7 @@
 
 #include "helpers/config.h"
 #include "helpers/peer_connection.h"
-// #include "helpers/packet_builder.h"
+#include "helpers/packet_builder.h"
 
 enum class ConnectionState
 {
@@ -114,9 +114,9 @@ int main(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
-    // PEER_CONNECTION::ConnectionManager cm(config, std::move(peer_socket), raw_tcp_socket);
-    // packet_handler(cm);
+    ConnectionManager cm(config, std::move(udp), raw_tcp_socket);
+    packet_handler(cm);
 
-    // close(raw_tcp_socket);
+    close(raw_tcp_socket);
     return 0;
 }
