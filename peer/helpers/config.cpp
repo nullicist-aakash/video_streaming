@@ -1,9 +1,9 @@
 #include "config.h"
-#include <arpa/inet.h>
 #include <string.h>
 
 #include <fstream>
 #include <iostream>
+#include "../../network/dns.h"
 
 namespace CONFIG
 {
@@ -35,11 +35,19 @@ namespace CONFIG
             inf >> input;
 
             if (input == "relay_ip")
-                inf >> config.relay_info.ip;
+            {
+                std::string input;
+                inf >> input;
+                config.relay_info.ip = get_dns_response(input).ips[0];
+            }
             else if (input == "relay_port")
                 inf >> config.relay_info.port;
             else if (input == "peer_ip")
-                inf >> config.peer_info.ip;
+            {   
+                std::string input;
+                inf >> input;
+                config.peer_info.ip = get_dns_response(input).ips[0];
+            }
             else if (input == "peer_port")
                 inf >> config.peer_info.port;
             else if (input == "self_udp_port")

@@ -106,7 +106,6 @@ int main(int argc, char** argv)
     std::cout << std::endl << "[Updated Config]" << std::endl;
     std::clog << config << std::endl;
     
-    return 0;
     int raw_tcp_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
     if (raw_tcp_socket < 0)
     {
