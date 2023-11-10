@@ -3,7 +3,7 @@
 
 #include <fstream>
 #include <iostream>
-#include "../../network/dns.h"
+#include "../network/dns.h"
 
 namespace CONFIG
 {

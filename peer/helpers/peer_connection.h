@@ -1,6 +1,6 @@
 #pragma once
 #include "config.h"
-#include "../../network/connection_manager.h"
+#include "../network/connection_manager.h"
 #include <map>
 #include <set>
 #include <vector>

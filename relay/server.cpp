@@ -18,8 +18,8 @@
 #include <memory>
 #include <cassert>
 #include <algorithm>
-#include "../network/data_types.h"
-#include "../network/connection_manager.h"
+#include "./network/data_types.h"
+#include "./network/connection_manager.h"
 
 #define MAX_PENDING 5
 #define BUFFSIZE 32
