@@ -25,9 +25,9 @@ int main(int argc, char** argv)
     std::clog << "[Config]" << std::endl << config << std::endl;
     auto peer_socket = PEER_CONNECTION::get_peer_udp(config);
     std::cout << std::endl << "[Updated Config]" << std::endl;
-    std::cout << "> Self UDP Port     " << ntohs(config.self_udp_port_n) << std::endl;
-    std::cout << "> Peer IP           " << inet_ntoa(*(in_addr*)&config.peer_ip_n) << std::endl;
-    std::cout << "> Peer Port         " << ntohs(config.peer_port_n) << std::endl;
+    std::cout << "> Self UDP Port     " << config.self_udp_port << std::endl;
+    std::cout << "> Peer IP           " << config.peer_info.ip << std::endl;
+    std::cout << "> Peer Port         " << config.peer_info.port << std::endl;
     
     int raw_tcp_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
     if (raw_tcp_socket < 0)

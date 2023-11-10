@@ -72,7 +72,7 @@ bool is_local_server_to_remote_client(ConnectionManager& cm, char* packet, int l
     if (!cm.is_local_ip(ip_header->saddr) || !cm.is_local_ip(ip_header->daddr))
         return false;
     
-    if (tcp_header->source != cm.config.self_server_port_n)
+    if (tcp_header->source != cm.config.self_server_port.get_port())
         return false;
     
     return cm.is_local_generated_port(tcp_header->source);
@@ -90,7 +90,7 @@ bool is_local_client_to_remote_server(ConnectionManager& cm, char* packet, int l
     if (!cm.is_local_ip(ip_header->saddr) || !cm.is_local_ip(ip_header->daddr))
         return false;
     
-    if (cm.config.self_mimic_port_n != tcp_header->dest)
+    if (cm.config.self_mimic_port.get_port() != tcp_header->dest)
         return false;
 
     cm.add_local_client_port(tcp_header->source);
@@ -136,7 +136,7 @@ void generate_udp_packet(ConnectionManager& cm, char* source, PacketDirection pd
     if (pd == PacketDirection::LOCAL_SERVER_TO_REMOTE_CLIENT)
     {
         tcp_header->source = 0;
-        tcp_header->dest = cm.get_remote_port_from_generated(tcp_header->dest);
+        tcp_header->dest = cm.get_remote_port_from_generated(tcp_header->dest).get_port();
     }
     else if (pd == PacketDirection::LOCAL_CLIENT_TO_REMOTE_SERVER)
         tcp_header->dest = 0;
@@ -160,11 +160,11 @@ void generate_tcp_packet(ConnectionManager& cm, char* source, PacketDirection pd
     auto tcp_header = (tcphdr*)buff;
     if (pd == PacketDirection::REMOTE_CLIENT_TO_LOCAL_SERVER)
     {
-        tcp_header->source = cm.get_generated_port(tcp_header->source);
-        tcp_header->dest = cm.config.self_server_port_n;
+        tcp_header->source = cm.get_generated_port(tcp_header->source).get_port();
+        tcp_header->dest = cm.config.self_server_port.get_port();
     }
     else if (pd == PacketDirection::REMOTE_SERVER_TO_LOCAL_CLIENT)
-        tcp_header->source = cm.config.self_mimic_port_n;
+        tcp_header->source = cm.config.self_mimic_port.get_port();
     else assert(false);
     
     // Compute new checksum
@@ -178,11 +178,7 @@ void packet_handler(ConnectionManager& cm)
     std::thread([&]()
     {
         // handle tcp raw socket here
-        sockaddr_in peer_addr;
-        memset(&peer_addr, 0, sizeof(sockaddr_in));
-        peer_addr.sin_family = AF_INET;
-        peer_addr.sin_port = cm.config.peer_port_n;
-        peer_addr.sin_addr.s_addr = cm.config.peer_ip_n;
+        sockaddr_in peer_addr = cm.config.peer_info;
 
         char receive_BUFF[BUFFER_SIZE];
         char send_BUFF[BUFFER_SIZE];
@@ -225,7 +221,7 @@ void packet_handler(ConnectionManager& cm)
             exit(EXIT_FAILURE);
         }
 
-        if (sourceAddr.sin_port != cm.config.peer_port_n || sourceAddr.sin_addr.s_addr != cm.config.peer_ip_n)
+        if (sourceAddr.sin_port != cm.config.peer_info.port.get_port() || sourceAddr.sin_addr.s_addr != cm.config.peer_info.ip.get_ip())
             continue;
 
         int send_len = BUFFER_SIZE;

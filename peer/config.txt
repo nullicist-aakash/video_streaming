@@ -1,5 +1,5 @@
-relay_ip 127.0.0.1
-relay_port 8080
+relay_ip 192.168.29.35
+relay_port 9000
 
 peer_ip 0.0.0.0
 peer_port 0

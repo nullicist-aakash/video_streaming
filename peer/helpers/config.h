@@ -1,23 +1,24 @@
 #pragma once
 #include <cstdint>
-#include <string>
+#include <string_view>
 #include <ostream>
+#include "../../network/data_types.h"
+
+using namespace Network;
 
 namespace CONFIG
 {
     struct Config
     {
-        uint32_t relay_ip_n;
-        uint16_t relay_port_n;
-        uint32_t peer_ip_n;
-        uint16_t peer_port_n;
-        uint16_t self_udp_port_n;
-        uint16_t self_server_port_n;
-        uint16_t self_mimic_port_n;
-        std::string identifier;
+        Socket relay_info{};
+        Socket peer_info{};
+        PORT self_udp_port{};
+        PORT self_server_port{};
+        PORT self_mimic_port{};
+        std::string identifier{};
 
         friend std::ostream& operator<<(std::ostream& os, const Config& config);
     };
 
-    Config get_config_from_file(const char* config_loc);
+    Config get_config_from_file(std::string_view config_loc);
 }
