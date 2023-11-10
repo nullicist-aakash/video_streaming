@@ -3,9 +3,6 @@
 #include <string.h>
 #include <thread>
 #include <vector>
-#include <ifaddrs.h>
-#include <arpa/inet.h>
-#include <sys/param.h>
 
 enum class ConnectionState
 {
@@ -28,17 +25,16 @@ namespace PEER_CONNECTION
         }
     }
 
-    Socket get_pa_from_relay(int relay_socket, const sockaddr_in& relay_addr, const char* identifier)
+    Socket get_peer_from_relay(const UDP& udp, CONFIG::Config& config)
     {
-        auto identifier_len = strlen(identifier);
         ConnectionState state = ConnectionState::STARTED;
 
-        auto thread = std::thread([&]() 
+        auto thread = std::thread([&]()
         {
             while (state != ConnectionState::RECEIVED_PEER)
             {
                 state = ConnectionState::SENT_SELF;
-                sendto(relay_socket, identifier, identifier_len, 0, (sockaddr*)&relay_addr, sizeof(relay_addr));
+                udp.send(config.identifier, config.relay_info);
                 std::this_thread::sleep_for(std::chrono::seconds(2));
             }
         });
@@ -46,15 +42,13 @@ namespace PEER_CONNECTION
         Socket pa;
         while (true)
         {
-            int n = recvfrom(relay_socket, &pa, sizeof(pa), 0, NULL, NULL);
-            if (n < 0)
-            {
-                perror("recvfrom");
-                exit(EXIT_FAILURE);
-            }
+            auto [str, sock] = udp.receive();
 
-            if (n == sizeof(pa) && pa.ip.get_ip() != 0 && pa.port.get_port() != 0)
-                break;
+            if ((str.size() != sizeof(pa)) || sock != config.relay_info)
+                continue;
+
+            memcpy(&pa, str.c_str(), sizeof(pa));
+            break;
         }
 
         state = ConnectionState::RECEIVED_PEER;
@@ -62,95 +56,58 @@ namespace PEER_CONNECTION
         return pa;
     }
 
-    void make_connection_with_peer(int relay_socket, const char* identifier, const Socket& pa)
+    void make_connection_with_peer(const UDP& udp, CONFIG::Config& config)
     {
-        sockaddr_in peer_addr = pa;
-
         ConnectionState state = ConnectionState::STARTED;
-        auto identifier_len = strlen(identifier);
-
+        
         // send messages in a loop to peer, untill we receive something from other side
         auto thread = std::thread([&]() 
         {
             while (state != ConnectionState::RECEIVED_PEER)
             {
                 state = ConnectionState::SENT_SELF;
-                sendto(relay_socket, identifier, identifier_len, 0, (sockaddr*)&peer_addr, sizeof(peer_addr));
+                udp.send(config.identifier, config.peer_info);
                 std::this_thread::sleep_for(std::chrono::seconds(1));
             }
         });
 
-        
         while (true)
         {
-            char BUFF[strlen(identifier) + 1];
-            memset(BUFF, 0, sizeof(BUFF));
+            auto [str, sock] = udp.receive();
 
-            if (recvfrom(relay_socket, BUFF, sizeof(BUFF), 0, NULL, NULL) < 0)
-            {
-                perror("recvfrom");
-                exit(EXIT_FAILURE);
-            }
-
-            if (strcmp(BUFF, identifier) == 0 && pa.ip.get_ip() == peer_addr.sin_addr.s_addr && pa.port.get_port() == peer_addr.sin_port)
-            {
-                std::cout << "Received from peer: " << BUFF << std::endl;
-                std::this_thread::sleep_for(std::chrono::seconds(3));
-                break;
-            }
+            if (str != config.identifier || config.peer_info != sock)
+                continue;
+                
+            std::cout << "Received from peer: " << str << std::endl;
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+            break;
         }
 
         state = ConnectionState::RECEIVED_PEER;
         thread.join();
     }
 
-    int get_peer_udp(CONFIG::Config& config)
+    UDP get_peer_udp(CONFIG::Config& config)
     {
-        auto relay_socket = socket(AF_INET, SOCK_DGRAM, 0);
-        if (relay_socket < 0)
-        {
-            perror("udp socket");
-            exit(EXIT_FAILURE);
-        }
-
-        if (config.self_udp_port.get_port() > 0)
-        {
-            struct sockaddr_in selfAddr;
-            memset(&selfAddr, 0, sizeof(selfAddr));
-            selfAddr.sin_family = AF_INET;
-            selfAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-            selfAddr.sin_port = config.self_udp_port.get_port();
+        UDP udp(config.self_udp_port);
         
-            if (bind(relay_socket, (struct sockaddr*)&selfAddr, sizeof(selfAddr)) == -1)
-            {
-                perror("bind_listen");
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        sockaddr_in relay_addr = config.relay_info;
-        
-        Socket pa;
-
         if (config.peer_info.ip == IP(0) || config.peer_info.port == PORT(0) || config.self_udp_port == PORT(0))
-            pa = get_pa_from_relay(relay_socket, relay_addr, config.identifier.c_str());
-        else
-            pa = config.peer_info;
-        
-        make_connection_with_peer(relay_socket, config.identifier.c_str(), pa);
-        config.peer_info = pa;
-        // TODO: Remove this wrong hardcoding
-        config.self_udp_port = PORT(8081, ByteOrder::HOST);
+        {
+            config.peer_info = get_peer_from_relay(udp, config);
+            config.self_udp_port = udp.get_self_port();
+        }
 
-        return relay_socket;
+        make_connection_with_peer(udp, config);
+
+        return udp;
     }
 
     ConnectionManager::ConnectionManager(
-        const CONFIG::Config& config, int peer_socket,
+        const CONFIG::Config& config, UDP&& peer_socket,
         int raw_tcp_socket) :
         config { config },
         local_ips { IP::get_local_ips() },
-        peer_socket { peer_socket },
+        peer_socket { std::move(peer_socket) },
         raw_tcp_socket { raw_tcp_socket }
     {
         if (local_ips.empty())

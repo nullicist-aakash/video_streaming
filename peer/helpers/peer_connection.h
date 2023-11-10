@@ -1,11 +1,10 @@
 #pragma once
 #include "config.h"
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include "../../network/connection_manager.h"
 #include <map>
 #include <set>
 #include <vector>
+using namespace Network;
 
 namespace PEER_CONNECTION
 {
@@ -27,12 +26,12 @@ namespace PEER_CONNECTION
         int generated_port_counter = 8084;
 
     public:
-        const int peer_socket;
+        const UDP peer_socket;
         const int raw_tcp_socket;
         const CONFIG::Config config;
         const std::vector<IP> local_ips;
 
-        ConnectionManager(const CONFIG::Config& config, int peer_socket, int raw_tcp_socket);
+        ConnectionManager(const CONFIG::Config& config, UDP&& peer_socket, int raw_tcp_socket);
         bool is_local_ip(IP) const;
         PORT get_generated_port(PORT);
         PORT get_remote_port_from_generated(PORT);
@@ -42,7 +41,5 @@ namespace PEER_CONNECTION
         bool is_local_generated_port(PORT);
     };
 
-    Socket get_pa_from_relay(int, const sockaddr_in&, const char*);
-    void make_connection_with_peer(int, const char*, const Socket&);
-    int get_peer_udp(CONFIG::Config&);
+    UDP get_peer_udp(CONFIG::Config&);
 }
