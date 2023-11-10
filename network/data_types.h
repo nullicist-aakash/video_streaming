@@ -57,6 +57,8 @@ namespace Network
             return port_n != other.port_n;
         }
 
+        bool operator<(const PORT& other) const { return this->get_port(ByteOrder::HOST) < other.get_port(ByteOrder::HOST); }
+        bool operator>(const PORT& other) const { return this->get_port(ByteOrder::HOST) != other.get_port(ByteOrder::HOST); }
         friend std::ostream& operator<< (std::ostream&, const PORT&);
         friend std::istream& operator>> (std::istream&, PORT&);
     };

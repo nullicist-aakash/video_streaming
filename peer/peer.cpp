@@ -6,12 +6,80 @@
 #include <fstream>
 #include <string>
 #include <iomanip>
+#include <thread>
 
 #include "helpers/config.h"
 #include "helpers/peer_connection.h"
-#include "helpers/packet_builder.h"
+// #include "helpers/packet_builder.h"
 
-#define BUFFER_SIZE 65536
+enum class ConnectionState
+{
+    STARTED,
+    SENT_SELF,
+    RECEIVED_PEER
+};
+
+Socket get_peer_from_relay(const UDP& udp, CONFIG::Config& config)
+{
+    ConnectionState state = ConnectionState::STARTED;
+
+    auto thread = std::thread([&]()
+    {
+        while (state != ConnectionState::RECEIVED_PEER)
+        {
+            state = ConnectionState::SENT_SELF;
+            udp.send(config.identifier, config.relay_info);
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+        }
+    });
+
+    Socket pa;
+    while (true)
+    {
+        auto [str, sock] = udp.receive();
+
+        if ((str.size() != sizeof(pa)) || sock != config.relay_info)
+            continue;
+
+        memcpy(&pa, str.c_str(), sizeof(pa));
+        break;
+    }
+
+    state = ConnectionState::RECEIVED_PEER;
+    thread.join();
+    return pa;
+}
+
+void make_connection_with_peer(const UDP& udp, CONFIG::Config& config)
+{
+    ConnectionState state = ConnectionState::STARTED;
+    
+    // send messages in a loop to peer, untill we receive something from other side
+    auto thread = std::thread([&]() 
+    {
+        while (state != ConnectionState::RECEIVED_PEER)
+        {
+            state = ConnectionState::SENT_SELF;
+            udp.send(config.identifier, config.peer_info);
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    });
+
+    while (true)
+    {
+        auto [str, sock] = udp.receive();
+
+        if (str != config.identifier || config.peer_info != sock)
+            continue;
+            
+        std::cout << "Received from peer: " << str << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(3));
+        break;
+    }
+
+    state = ConnectionState::RECEIVED_PEER;
+    thread.join();
+}
 
 int main(int argc, char** argv)
 {
@@ -24,12 +92,19 @@ int main(int argc, char** argv)
     auto config = CONFIG::get_config_from_file(argv[1]);
     std::clog << "[Config]" << std::endl << config << std::endl;
 
-    auto peer_socket = PEER_CONNECTION::get_peer_udp(config);
+    UDP udp(config.self_udp_port);
+    
+    if (config.peer_info.ip == IP{} || config.peer_info.port == PORT{} || config.self_udp_port == PORT{})
+    {
+        std::cout << "Using relay server to get peer information" << std::endl;
+        config.peer_info = get_peer_from_relay(udp, config);
+        config.self_udp_port = udp.get_self_port();
+    }
+
+    make_connection_with_peer(udp, config);
     
     std::cout << std::endl << "[Updated Config]" << std::endl;
-    std::cout << "> Self UDP Port     " << config.self_udp_port << std::endl;
-    std::cout << "> Peer IP           " << config.peer_info.ip << std::endl;
-    std::cout << "> Peer Port         " << config.peer_info.port << std::endl;
+    std::clog << config << std::endl;
     
     return 0;
     int raw_tcp_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);

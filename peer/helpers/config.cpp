@@ -17,7 +17,6 @@ namespace CONFIG
         os << "> Self Mimic Port   " << config.self_mimic_port << std::endl;
         os << std::endl;
         os << "> Identifier        " << config.identifier << std::endl;
-        os << std::endl;
         return os;
     }
 

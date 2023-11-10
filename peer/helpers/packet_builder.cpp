@@ -11,7 +11,6 @@
 #include <iostream>
 #include <thread>
 
-using namespace PEER_CONNECTION;
 const int BUFFER_SIZE = 65536;
 enum class PacketDirection
 {
