@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <vector>
+#include <sys/wait.h>
 
 void add_ip_table_entry(PORT port)
 {
@@ -14,6 +15,7 @@ void add_ip_table_entry(PORT port)
         system(s.c_str());
         exit(0);
     }
+    wait(NULL);
 }
 
 ConnectionManager::ConnectionManager(

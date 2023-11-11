@@ -1,8 +1,8 @@
 make:
-	@g++ -o ../peer.out peer.cpp helpers/*.cpp network/*.cpp -std=c++20
+	@g++ -o ../docker/peer.out peer.cpp helpers/*.cpp network/*.cpp -std=c++20
 
 run:
-	@../peer.out config.txt
+	@../docker/peer.out config.txt
 
 clean:
-	@rm ../peer.out
+	@rm ../docker/peer.out

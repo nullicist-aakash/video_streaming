@@ -25,7 +25,7 @@ namespace CONFIG
         std::ifstream inf { config_loc.data() };
 
         if (!inf)
-            throw std::runtime_error("Uh oh, Sample.txt could not be opened for writing!");
+            throw std::runtime_error(std::string("Uh oh, ") + std::string(config_loc) + std::string(" could not be opened for reading!"));
 
         Config config {};
 
