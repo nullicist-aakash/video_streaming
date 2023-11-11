@@ -3,9 +3,31 @@
 #include <string.h>
 #include <unistd.h>
 #include <iostream>
+#include <iomanip>
+
+#define HEX( x, len ) std::setw(2 * len) << std::setfill('0') << std::hex << std::uppercase << (((1ll << (8 * len)) - 1) & (unsigned int)( x )) << std::dec
 
 namespace Network
 {
+	void hex_view(const char* str, const size_t len)
+	{
+		for (int i = 0; i < ((int)len >> 4) + (len % 16 ? 1 : 0); ++i)
+		{
+			int start = i * 16;
+			int end = std::min(i * 16 + 15, (int)len - 1);
+			std::clog << "0x" << HEX(start, 4) << " |  ";
+			for (int j = start; j <= end; ++j)
+				std::clog << HEX(str[j], 1) << (j % 8 == 7 ? "  " : " ");
+
+			for (int j = end; j < i * 16 + 15; ++j)
+				std::clog << (j % 8 == 7 ? "    " : "   ");
+			std::clog << "| ";
+			for (int j = start; j <= end; ++j)
+				std::clog << (std::isprint(str[j]) ? str[j] : '.');
+			std::clog << '\n';
+		}
+	}
+
 	TCPServer::TCPServer(const Socket& self_socket) : self_socket(self_socket)
 	{
 		listenfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -158,6 +180,9 @@ namespace Network
 
 	int TCP::send(const std::string& str) const
 	{
+		std::clog << "[" << this->socket_pair << "]: Sending via TCP" << std::endl;
+		hex_view(str.data(), str.size());
+
 		ssize_t nwritten{};
 		size_t nleft = str.size();
 		const char* ptr = str.data();
@@ -195,6 +220,10 @@ namespace Network
 			}
 
 			str.resize(n);
+			
+			std::clog << "[" << this->socket_pair << "]: Received via TCP" << std::endl;
+			hex_view(str.data(), str.size());
+
 			return str;
 		}
 
@@ -221,6 +250,9 @@ namespace Network
 			nleft -= nread;
 			ptr += nread;
 		}
+
+		std::clog << "[" << this->socket_pair << "]: Received via TCP" << std::endl;
+		hex_view(buffer.data(), buffer.size());
 
 		return buffer;
 	}
@@ -292,11 +324,10 @@ namespace Network
 
 	void UDP::send(const std::string& sv, const Socket& remote) const
 	{
-		sockaddr_in serv_addr {};
-		explicit_bzero((char*)&serv_addr, sizeof(serv_addr));
-		serv_addr.sin_family = AF_INET;
-		serv_addr.sin_addr.s_addr = remote.ip.get_ip();
-		serv_addr.sin_port = remote.port.get_port();
+		sockaddr_in serv_addr = remote;
+		
+		std::clog << "[" << remote << "]: Sending via UDP" << std::endl;
+		hex_view(sv.data(), sv.size());
 
 		if (sendto(sockfd, sv.data(), sv.size(), 0, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
 		{
@@ -319,6 +350,10 @@ namespace Network
 		}
 
 		str.resize(n);
+		
+		std::clog << "[" << Socket{ serv_addr } << "]: Received via UDP" << std::endl;
+		hex_view(str.data(), str.size());
+
 		return { str, Socket{ serv_addr } };
 	}
 

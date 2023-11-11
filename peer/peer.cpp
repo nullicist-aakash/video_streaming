@@ -72,7 +72,7 @@ void make_connection_with_peer(const UDP& udp, CONFIG::Config& config)
         if (str != config.identifier || config.peer_info != sock)
             continue;
             
-        std::cout << "Received from peer: " << str << std::endl;
+        std::clog << "Received from peer: " << str << std::endl;
         std::this_thread::sleep_for(std::chrono::seconds(3));
         break;
     }
@@ -96,14 +96,14 @@ int main(int argc, char** argv)
     
     if (config.peer_info.ip == IP{} || config.peer_info.port == PORT{} || config.self_udp_port == PORT{})
     {
-        std::cout << "Using relay server to get peer information" << std::endl;
+        std::clog << "Using relay server to get peer information" << std::endl;
         config.peer_info = get_peer_from_relay(udp, config);
         config.self_udp_port = udp.get_self_port();
     }
 
     make_connection_with_peer(udp, config);
     
-    std::cout << std::endl << "[Updated Config]" << std::endl;
+    std::clog << std::endl << "[Updated Config]" << std::endl;
     std::clog << config << std::endl;
     
     int raw_tcp_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);

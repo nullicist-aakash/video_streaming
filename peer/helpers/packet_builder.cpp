@@ -10,6 +10,28 @@
 #include <cassert>
 #include <iostream>
 #include <thread>
+#include <iomanip>
+
+#define HEX( x, len ) std::setw(2 * len) << std::setfill('0') << std::hex << std::uppercase << (((1ll << (8 * len)) - 1) & (unsigned int)( x )) << std::dec
+
+void hex_view(const char* str, const size_t len)
+{
+    for (int i = 0; i < ((int)len >> 4) + (len % 16 ? 1 : 0); ++i)
+    {
+        int start = i * 16;
+        int end = std::min(i * 16 + 15, (int)len - 1);
+        std::clog << "0x" << HEX(start, 4) << " |  ";
+        for (int j = start; j <= end; ++j)
+            std::clog << HEX(str[j], 1) << (j % 8 == 7 ? "  " : " ");
+
+        for (int j = end; j < i * 16 + 15; ++j)
+            std::clog << (j % 8 == 7 ? "    " : "   ");
+        std::clog << "| ";
+        for (int j = start; j <= end; ++j)
+            std::clog << (std::isprint(str[j]) ? str[j] : '.');
+        std::clog << '\n';
+    }
+}
 
 const int BUFFER_SIZE = 65536;
 enum class PacketDirection
@@ -107,7 +129,7 @@ bool is_remote_client_to_local_server(ConnectionManager& cm, char* packet, int l
         return false;
     
     cm.get_generated_port(tcp_header->source);
-    return false;
+    return true;
 }
 
 bool is_remote_server_to_local_client(ConnectionManager& cm, char* packet, int len)
@@ -123,10 +145,8 @@ bool is_remote_server_to_local_client(ConnectionManager& cm, char* packet, int l
     return cm.is_local_client_port(tcp_header->dest);
 }
 
-void generate_udp_packet(ConnectionManager& cm, char* source, PacketDirection pd, void* buff, ssize_t &len)
+void generate_udp_packet(ConnectionManager& cm, char* source, PacketDirection pd, char* buff, ssize_t &len)
 {
-    std::clog << "Generating a UDP packet!" << std::endl;
-
     auto ip_header = (iphdr*)source;
     auto ip_len = (ip_header->ihl << 2);
     auto tcp_header = (tcphdr*)(source + ip_len);
@@ -145,14 +165,13 @@ void generate_udp_packet(ConnectionManager& cm, char* source, PacketDirection pd
     tcp_header->check = 0;
 
     // set length and copy contents
+    
     len -= ip_len;
     memcpy(buff, tcp_header, len);
 }
 
 void generate_tcp_packet(ConnectionManager& cm, char* source, PacketDirection pd, void* buff, int len)
 {
-    std::clog << "Generating a TCP packet!" << std::endl;
-
     memcpy(buff, source, len);
 
     // Change source and destination ports
@@ -192,6 +211,9 @@ void packet_handler(ConnectionManager& cm)
                 exit(EXIT_FAILURE);
             }
 
+            std::clog << "[" << Socket{sourceAddr} << "]: Received via RAW" << std::endl;
+            hex_view(receive_BUFF, dataSize);
+
             if (is_local_server_to_remote_client(cm, receive_BUFF, dataSize))
                 generate_udp_packet(cm, receive_BUFF, PacketDirection::LOCAL_SERVER_TO_REMOTE_CLIENT, send_BUFF, dataSize);
             else if (is_local_client_to_remote_server(cm, receive_BUFF, dataSize))
@@ -199,14 +221,11 @@ void packet_handler(ConnectionManager& cm)
             else continue;
 
             // send data as packet over udp
-            socklen = sizeof(sockaddr_in);
-            cm.peer_socket.send(send_BUFF, cm.config.peer_info);
+            cm.peer_socket.send(std::string(send_BUFF, dataSize), cm.config.peer_info);
         }
     }).detach();
 
     // handle udp peer socket here
-    char send_BUFF[BUFFER_SIZE];
-
     while (true)
     {
         socklen_t socklen = sizeof(sockaddr_in);
@@ -215,16 +234,20 @@ void packet_handler(ConnectionManager& cm)
         if (source_sock != cm.config.peer_info)
             continue;
 
-        int send_len = BUFFER_SIZE;
+        std::string send_BUFF(msg.size(), '\0');
+
         if (is_remote_client_to_local_server(cm, msg.data(), msg.size()))
-            generate_tcp_packet(cm, msg.data(), PacketDirection::REMOTE_CLIENT_TO_LOCAL_SERVER, send_BUFF, send_len);
+            generate_tcp_packet(cm, msg.data(), PacketDirection::REMOTE_CLIENT_TO_LOCAL_SERVER, send_BUFF.data(), send_BUFF.size());
         else if (is_remote_server_to_local_client(cm, msg.data(), msg.size()))
-            generate_tcp_packet(cm, msg.data(), PacketDirection::REMOTE_SERVER_TO_LOCAL_CLIENT, send_BUFF, send_len);
+            generate_tcp_packet(cm, msg.data(), PacketDirection::REMOTE_SERVER_TO_LOCAL_CLIENT, send_BUFF.data(), send_BUFF.size());
         else continue;
 
         // send data as packet over raw tcp socket
-        sockaddr_in destAddr = Socket{IP{"127.0.0.1"}, PORT{((tcphdr*)send_BUFF)->dest, ByteOrder::NETWORK}};
+        sockaddr_in destAddr = Socket{IP{"127.0.0.1"}, PORT{((tcphdr*)send_BUFF.data())->dest, ByteOrder::NETWORK}};
         socklen = sizeof(sockaddr_in);
-        sendto(cm.raw_tcp_socket, send_BUFF, send_len, 0, (sockaddr*)&destAddr, socklen);
+        sendto(cm.raw_tcp_socket, send_BUFF.data(), send_BUFF.size(), 0, (sockaddr*)&destAddr, socklen);
+        
+        std::clog << "[" << Socket{destAddr} << "]: Sending via RAW" << std::endl;
+        hex_view(send_BUFF.data(), send_BUFF.size());
     }
 }

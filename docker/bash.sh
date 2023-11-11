@@ -25,5 +25,5 @@ Shared with peer2 automatically
 docker cp peer.out peer1:/usr/src/peer.out
 docker cp config.txt peer1:/usr/src/config.txt
 
-docker exec peer1 bash -c 'tcpdump -Xi any -w peer1.pcap &' &
-docker exec peer2 bash -c 'tcpdump -Xi any -w peer2.pcap &' &
+# docker exec peer1 bash -c 'tcpdump -Xi any -w /usr/src/peer1.pcap &' &
+# docker exec peer2 bash -c 'tcpdump -Xi any -w /usr/src/peer2.pcap &' &
